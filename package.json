@@ -1,0 +1,20 @@
+{
+  "name": "tenly-rails",
+  "version": "1.0.0",
+  "description": "TenLy (The Ken Case-Build Round 3): MCP servers, rail mocks, real-tool wrappers and WhatsApp relay for the TenLy agent on AgenticOrg",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node src/server.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "reconcile": "node scripts/reconcile.js",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "@hono/node-server": "^1.13.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0"
+  }
+}
