@@ -40,9 +40,17 @@ export const sheetsTools = [
   },
   {
     name: 'append_rows',
-    description: 'Append rows (objects keyed by column name) to Obligations or Audit. New obligations start as RECORDED and need obligation_id, tenancy_id, owed_by, source_type and source_ref. Agent Audit rows need event_id, decision and rule; actor is set to "agent". Unknown columns are refused.',
+    description: 'Append rows to Obligations or Audit. Each row is an OBJECT keyed by column name (never a list of values), e.g. {"tab":"Obligations","rows":[{"obligation_id":"OB-1","tenancy_id":"T-302","type":"repair","title":"Kitchen tap leak","owed_by":"owner","owed_to":"tenant","source_type":"clause","source_ref":"7b","due_at":"2026-10-01T15:00:00+05:30","state":"RECORDED","state_since":"2026-10-01T14:40:00+05:30"}]}. New obligations start as RECORDED and need obligation_id, tenancy_id, owed_by, source_type and source_ref. Agent Audit rows need event_id, decision and rule; actor is set to "agent". Unknown columns are refused.',
     inputSchema: { type: 'object', properties: { tab: { type: 'string', enum: ['Obligations', 'Audit'] }, rows: { type: 'array', items: { type: 'object' } } }, required: ['tab', 'rows'] },
-    handler: wrap('append_rows', async (a) => ({ appended: await agentLedger.append(a.tab, a.rows) })),
+    handler: wrap('append_rows', async (a) => {
+      const rows = Array.isArray(a.rows) ? a.rows : [a.rows];
+      // A list of values is accepted only when it has exactly one value per column, in column order.
+      const fixed = rows.map((r) => (Array.isArray(r) && r.length === SCHEMA[a.tab]?.length ? Object.fromEntries(SCHEMA[a.tab].map((c, i) => [c, r[i]])) : r));
+      if (fixed.some((r) => Array.isArray(r) || !r || typeof r !== 'object')) {
+        return toolError({ error: 'rows must be objects keyed by column name, not lists of values', columns: SCHEMA[a.tab], example: { [SCHEMA[a.tab][0]]: '...', [SCHEMA[a.tab][1]]: '...' } });
+      }
+      return { appended: await agentLedger.append(a.tab, fixed) };
+    }),
   },
   {
     name: 'update_range',
