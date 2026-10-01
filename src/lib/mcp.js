@@ -31,6 +31,38 @@ function checkArgs(schema, args) {
   return null;
 }
 
+// Some MCP clients (AgenticOrg among them) hand the model an empty argument schema, so the model
+// sends free text or JSON inside one field such as "query". Recover the intended arguments.
+const WRAPPERS = ['query', 'input', 'args', 'arguments', 'params', 'json', 'payload', 'request', 'kwargs'];
+export function normaliseArgs(args) {
+  let a = args;
+  if (typeof a === 'string') { try { a = JSON.parse(a); } catch { a = { query: a }; } }
+  if (a == null || typeof a !== 'object' || Array.isArray(a)) return a;
+  for (const k of WRAPPERS) {
+    const v = a[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) { const { [k]: _, ...rest } = a; a = { ...rest, ...v }; continue; }
+    if (typeof v === 'string' && /^\s*[{[]/.test(v)) {
+      try { const j = JSON.parse(v); if (j && typeof j === 'object' && !Array.isArray(j)) { const { [k]: _, ...rest } = a; a = { ...rest, ...j }; } } catch { /* keep as text */ }
+    }
+  }
+  // Values that are JSON text for object/array arguments (e.g. rows: "[{...}]").
+  for (const [k, v] of Object.entries(a)) {
+    if (typeof v === 'string' && /^\s*[{[]/.test(v)) { try { a[k] = JSON.parse(v); } catch { /* leave */ } }
+  }
+  return a;
+}
+
+// Spell the arguments out in the description too, for clients that drop inputSchema.
+function describe(t) {
+  const sc = t.inputSchema || {};
+  const req = new Set(sc.required || []);
+  const parts = Object.entries(sc.properties || {}).map(([k, p]) => `${k}${req.has(k) ? '' : '?'}: ${p.enum ? p.enum.join('|') : (p.type || 'any')}`);
+  if (!parts.length) return t.description;
+  const ex = {};
+  for (const [k, p] of Object.entries(sc.properties || {})) if (req.has(k)) ex[k] = p.enum ? p.enum[0] : p.type === 'object' ? {} : p.type === 'array' ? [] : p.type === 'integer' ? 0 : '...';
+  return `${t.description} ARGUMENTS (pass as named JSON fields, not free text): {${parts.join(', ')}}. Example: ${JSON.stringify(ex)}`;
+}
+
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
 /**
@@ -66,7 +98,7 @@ export function mcpServer(def) {
           jsonrpc: '2.0', id,
           result: {
             tools: def.tools.map((t) => ({
-              name: t.name, description: t.description, inputSchema: t.inputSchema,
+              name: t.name, description: describe(t), inputSchema: t.inputSchema,
               ...(t.annotations ? { annotations: t.annotations } : {}),
             })),
           },
@@ -74,7 +106,8 @@ export function mcpServer(def) {
       case 'tools/call': {
         const tool = byName.get(params?.name);
         if (!tool) return rpcError(id, -32602, `Unknown tool: ${params?.name}`);
-        const args = params?.arguments ?? {};
+        let args = normaliseArgs(params?.arguments ?? {});
+        if (tool.coerce) args = tool.coerce(args);
         const bad = checkArgs(tool.inputSchema, args);
         if (bad) {
           await audit({ actor: 'mcp', source_connector: def.name, action: `${tool.name} refused`, result: bad });

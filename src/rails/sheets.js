@@ -22,7 +22,21 @@ export const sheetsTools = [
     name: 'read_range',
     description: `Read rows from a tab of the tenancy Sheet as objects. Tabs: ${TABS.join(', ')}. Optional "where" filters by exact column values, e.g. {"tenancy_id":"T-302"} or {"processed":"FALSE"}. Amounts are in paise; times are ISO 8601 IST. Also returns now_ist (the demo clock).`,
     inputSchema: { type: 'object', properties: { tab: { type: 'string', enum: TABS }, where: { type: 'object' } }, required: ['tab'] },
-    handler: wrap('read_range', async (a) => ({ tab: a.tab, now_ist: await nowIST(), rows: await agentLedger.read(a.tab, a.where || {}) })),
+    // Free text such as "Tenancy, Parties, Obligations" reads several tabs at once.
+    coerce: (a) => {
+      if (a.tab || typeof a.query !== 'string') return a;
+      const tabs = TABS.filter((t) => new RegExp(t, 'i').test(a.query));
+      return { ...a, tab: tabs[0] || '', tabs };
+    },
+    handler: wrap('read_range', async (a) => {
+      const now_ist = await nowIST();
+      if (Array.isArray(a.tabs) && a.tabs.length > 1) {
+        const out = {};
+        for (const t of a.tabs) out[t] = await agentLedger.read(t, a.where || {});
+        return { now_ist, tabs: out, note: 'Several tabs read; pass {"tab": NAME} to read one.' };
+      }
+      return { tab: a.tab, now_ist, rows: await agentLedger.read(a.tab, a.where || {}) };
+    }),
   },
   {
     name: 'append_rows',
