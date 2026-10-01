@@ -15,6 +15,7 @@ import { waTools, outbox } from './rails/whatsapp.js';
 import { sheetsTools } from './rails/sheets.js';
 import { relayRoutes, handleMessage } from './relay.js';
 import { consoleHtml } from './console.js';
+import { demoHtml } from './demo.js';
 
 export const app = new Hono();
 let bootedOnce;
@@ -103,6 +104,9 @@ app.post('/mock/inbound', async (c) => {
 });
 app.get('/sample/fixed-tap.svg', (c) => c.body('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="320" height="200" fill="#e8f4f8"/><text x="20" y="100" font-size="20">Kitchen tap - cartridge replaced, no leak</text></svg>', 200, { 'content-type': 'image/svg+xml' }));
 app.get('/console', (c) => c.html(consoleHtml()));
+app.get('/demo', (c) => c.html(demoHtml()));
+app.get('/mock/caption', async (c) => c.json((await kv.get('tenly:caption')) || {}));
+app.post('/mock/caption', async (c) => { const b = await c.req.json(); await kv.set('tenly:caption', b); return c.json({ ok: true }); });
 app.get('/mock/approve-mandate/:id', async (c) => c.json({ approved: await p3p.approveMandate(c.req.param('id')) }));
 
 // Seed mandates on cold start (idempotent; the reset endpoint re-seeds everything).
