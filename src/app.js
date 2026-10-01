@@ -40,6 +40,13 @@ const SERVERS = {
   p3p: { name: 'tenly_p3p', key: () => config.mcpKeys.p3p, tools: p3pTools, instructions: 'Pine Labs P3P (mock with the real method names): mandates, balance, 402 payment decision.' },
   caps: { name: 'tenly_caps', key: () => config.mcpKeys.caps, tools: capsTools, instructions: 'TenLy capabilities the rails lack today: individual payout, payout status, split debit, parts stock.' },
 };
+// One combined server with every TenLy tool except Gnani (one connector on AgenticOrg is simpler to
+// grant and audit). Same tool names and the same server-side guardrails as the per-rail servers.
+SERVERS.all = {
+  name: 'tenly_all', key: () => process.env.MCP_KEY_ALL || config.mcpKeys.caps,
+  tools: [...sheetsTools, ...waTools, ...delhiveryTools, ...p3pTools, ...capsTools],
+  instructions: 'TenLy rails: shared record (sheets), WhatsApp, Delhivery (mock), P3P (mock), payouts and parts stock.',
+};
 for (const [path, s] of Object.entries(SERVERS)) {
   app.all(`/mcp/${path}`, mcpServer({ name: s.name, version: '1.0.0', apiKey: s.key, tools: s.tools, instructions: s.instructions }));
 }
