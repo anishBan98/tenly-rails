@@ -18,6 +18,18 @@ import { consoleHtml } from './console.js';
 
 export const app = new Hono();
 
+// Request log for MCP endpoints (headers redacted) - visible in Vercel runtime logs and /mock/mcplog.
+app.use('/mcp/*', async (c, next) => {
+  const t0 = Date.now();
+  let body = '';
+  try { body = (await c.req.raw.clone().text()).slice(0, 300); } catch { /* ignore */ }
+  const h = Object.fromEntries([...c.req.raw.headers.entries()].map(([k, v]) => [k, /key|auth|token|cookie/i.test(k) ? `${v.slice(0, 4)}…(${v.length})` : v.slice(0, 120)]));
+  await next();
+  const rec = { at: new Date().toISOString(), method: c.req.method, path: c.req.path, status: c.res.status, ms: Date.now() - t0, headers: h, body };
+  console.log('mcp', JSON.stringify(rec));
+  try { await kv.lpushCapped('tenly:mcplog', rec, 200); } catch { /* ignore */ }
+});
+
 const SERVERS = {
   sheets: { name: 'tenly_sheets', key: () => config.mcpKeys.sheets, tools: sheetsTools, instructions: 'TenLy shared tenancy record (Google Sheets). Read before acting; write every state change and decision.' },
   gnani: { name: 'tenly_gnani', key: () => config.mcpKeys.gnani, tools: gnaniTools, instructions: 'Gnani STT/TTS. Every voice input and voice reply goes through these tools.' },
@@ -55,6 +67,7 @@ app.post('/mock/reset', async (c) => {
 });
 app.post('/mock/clock', async (c) => { const { advance_minutes } = await c.req.json(); await advance(Number(advance_minutes || 0)); return c.json({ now_ist: await nowIST() }); });
 app.get('/mock/log', async (c) => c.json(await kv.lrange('tenly:auditlog', Number(c.req.query('n') || 100))));
+app.get('/mock/mcplog', async (c) => c.json(await kv.lrange('tenly:mcplog', Number(c.req.query('n') || 30))));
 app.get('/mock/outbox', async (c) => c.json(await outbox(Number(c.req.query('n') || 50))));
 app.get('/mock/ledger', async (c) => { const l = await getLedger(); const out = {}; for (const t of ['Tenancy', 'Parties', 'Obligations', 'Inbox', 'Config', 'Audit']) out[t] = await l.read(t); return c.json(out); });
 app.post('/mock/fixture/stt', async (c) => { const { media_key, transcript } = await c.req.json(); await kv.set(`tenly:fixture:stt:${media_key}`, { transcript }); return c.json({ ok: true }); });
