@@ -101,4 +101,18 @@ export const waTools = [
   },
 ];
 
+// Accept the field names models commonly use for WhatsApp sends.
+const pick = (a, keys) => keys.map((k) => a[k]).find((v) => v != null && v !== '');
+function coerceWa(a) {
+  const out = { ...a };
+  out.to = String(pick(a, ['to', 'phone', 'msisdn', 'recipient', 'number', 'to_msisdn']) ?? '').replace(/[^0-9]/g, '');
+  const body = pick(a, ['body', 'text', 'message', 'content', 'msg', 'message_text']);
+  if (body != null) out.body = typeof body === 'object' ? (body.body || body.text || JSON.stringify(body)) : String(body);
+  if (Array.isArray(a.buttons)) {
+    out.buttons = a.buttons.map((b, i) => (typeof b === 'string' ? { id: `${b.toLowerCase().replace(/[^a-z]+/g, '')}:${a.obligation_id || i}`, title: b } : { id: b.id || b.button_id || b.payload, title: b.title || b.text || b.label }));
+  }
+  return out;
+}
+for (const t of waTools) t.coerce = coerceWa;
+
 export async function outbox(n = 50) { return kv.lrange('tenly:wa:outbox', n); }
