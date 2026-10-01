@@ -5,6 +5,7 @@
 //  - obligation state changes must follow the Q3 lifecycle; leaving DISPUTED needs a human review_ref
 //  - CLOSED on a repair needs both proofs and a payment reference
 import { config, isLive } from '../lib/config.js';
+import { nowIST } from '../lib/clock.js';
 import { SCHEMA, TRANSITIONS, STATES, DEMO_SEED } from './schema.js';
 import { createLocalLedger } from './local.js';
 import { createSheetsLedger } from './sheets.js';
@@ -101,6 +102,7 @@ export const agentLedger = {
       const cur = (await l.read('Obligations')).find((o) => o.obligation_id === String(where.obligation_id));
       if (!cur) throw new GuardError(`no obligation ${where.obligation_id}`);
       if ('obligation_id' in set || 'tenancy_id' in set) throw new GuardError('obligation_id and tenancy_id cannot change');
+      if ('state' in set && set.state !== cur.state && !set.state_since) set.state_since = await nowIST();
       checkObligationChange(cur, set);
     }
     for (const [k, v] of Object.entries(set)) if (typeof v === 'boolean' || /^(true|false)$/i.test(String(v))) set[k] = String(v).toUpperCase();
