@@ -17,6 +17,8 @@ import { relayRoutes, handleMessage } from './relay.js';
 import { consoleHtml } from './console.js';
 
 export const app = new Hono();
+let bootedOnce;
+app.use('*', async (c, next) => { bootedOnce ??= boot().catch(() => { bootedOnce = undefined; }); await bootedOnce; return next(); });
 
 // Request log for MCP endpoints (headers redacted) - visible in Vercel runtime logs and /mock/mcplog.
 app.use('/mcp/*', async (c, next) => {
@@ -100,3 +102,7 @@ app.get('/mock/approve-mandate/:id', async (c) => c.json({ approved: await p3p.a
 export async function boot() {
   if (!(await kv.get('tenly:p3p:mandate:MND-302'))) await seedMandates();
 }
+
+// Vercel's Hono preset may load this module directly (e.g. for "/"), so export the app too and
+// make sure the mandates are seeded on that path as well.
+export default app;
