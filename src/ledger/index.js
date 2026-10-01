@@ -61,7 +61,9 @@ export function checkObligationChange(cur, set) {
 // Agent-facing operations (called by the tenly_sheets MCP tools).
 export const agentLedger = {
   async read(tab, where = {}) {
-    checkCols(tab, where);
+    if (!SCHEMA[tab]) checkCols(tab, {});
+    // Reads are lenient: filters on columns a tab does not have are ignored (e.g. Config has no tenancy_id).
+    where = Object.fromEntries(Object.entries(where || {}).filter(([k]) => SCHEMA[tab].includes(k)));
     const rows = await (await getLedger()).read(tab);
     return rows.filter((r) => Object.entries(where).every(([k, v]) => r[k] === String(v)));
   },
@@ -101,6 +103,7 @@ export const agentLedger = {
       if ('obligation_id' in set || 'tenancy_id' in set) throw new GuardError('obligation_id and tenancy_id cannot change');
       checkObligationChange(cur, set);
     }
+    for (const [k, v] of Object.entries(set)) if (typeof v === 'boolean' || /^(true|false)$/i.test(String(v))) set[k] = String(v).toUpperCase();
     const n = await l.updateWhere(tab, where, set);
     if (!n) throw new GuardError(`no ${tab} row matched ${JSON.stringify(where)}`);
     return n;
